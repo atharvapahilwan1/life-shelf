@@ -146,11 +146,18 @@ svg.i-sm{width:20px;height:20px}
 .progress span.on::after{transform:scaleX(1)}
 .progress span.here{background:color-mix(in srgb,var(--accent) 24%,transparent)}
 
-/* The reading card: an index card with its shelf's color printed along the top edge (signature) */
-.card{position:relative;background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-2);overflow:clip;
-  padding:var(--s6);padding-top:calc(var(--s6) + 4px);display:grid;gap:var(--s4)}
-.card::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--th)}
-.card .who .thn{flex:none;color:color-mix(in srgb,var(--th) 82%,#000);font-weight:500}
+/* The reading card: an index card with a divider tab cut from the same card (signature).
+   The tab is the card's own white, joined by two small inside curves, with a printed dot and label. */
+.card{position:relative;background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-2);
+  padding:var(--s6);margin-top:28px;display:grid;gap:var(--s4)}
+.card .tab{position:absolute;left:var(--s4);top:-28px;height:29px;padding:0 var(--s3) 1px;
+  background:var(--card);border-radius:10px 10px 0 0;box-shadow:0 -1px 0 rgba(26,25,22,.05),0 -4px 10px -6px rgba(26,25,22,.16);
+  clip-path:inset(-12px -12px 1px -12px);
+  display:flex;align-items:center;gap:6px;color:var(--ink-2);white-space:nowrap}
+.card .tab::before,.card .tab::after{content:"";position:absolute;bottom:1px;width:8px;height:8px}
+.card .tab::before{left:-8px;background:radial-gradient(circle at 0 0,transparent 7.5px,var(--card) 8px)}
+.card .tab::after{right:-8px;background:radial-gradient(circle at 100% 0,transparent 7.5px,var(--card) 8px)}
+.card .tab i{width:6px;height:6px;border-radius:50%;background:var(--th);flex:none}
 .card .who{display:flex;align-items:center;gap:var(--s2);color:var(--ink-3);min-width:0}
 .card .who b{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .card .who .dot{width:3px;height:3px;border-radius:50%;background:var(--ink-3);flex:none}
@@ -441,7 +448,8 @@ function postCard(p,{animate}={}){
   const T=th(p),s=mk(p.id),text=clean(p.t),long=text.length>440,open=expanded.has(p.id);
   const paras=text.split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
   const card=h("article",{class:"card"+(animate?" "+animate:""),style:`--th:var(--tab-${p.th})`,"aria-label":"Post by "+(p.n||p.h)},
-    h("div",{class:"who t-caption"},h("span",{class:"thn"},T.label),h("i",{class:"dot"}),h("b",{},p.n||"@"+p.h),h("i",{class:"dot"}),h("span",{class:"rt num"},readTime(p))),
+    h("div",{class:"tab t-micro"},h("i",{"aria-hidden":"true"}),T.label),
+    h("div",{class:"who t-caption"},h("b",{},p.n||"@"+p.h),h("i",{class:"dot"}),h("span",{class:"rt num"},readTime(p))),
     h("div",{class:"post t-read"+(long&&!open?" clamp":"")},paras.map(x=>h("p",{},x))),
     p.q?h("div",{class:"quote t-body"},p.qb?h("span",{class:"qb t-caption"},"Quoting @"+p.qb):null,h("p",{},clean(p.q).slice(0,open?4000:280)+(!open&&clean(p.q).length>280?"…":""))):null,
     long?h("button",{class:"more t-label",onclick:()=>{open?expanded.delete(p.id):expanded.add(p.id);render()},"aria-expanded":String(open)},open?"Show less":"Keep reading",icon(open?"left":"down","i i-sm")):null,
