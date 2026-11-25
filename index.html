@@ -1,0 +1,644 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><style>body{margin:0;padding-top:env(safe-area-inset-top,0px)}</style></head><body><script>
+/* Local stand-in for claude.use("db"): posts from data/*.json, marks in this phone's storage. */
+(function(){
+  const KEY="lifeshelf.marks.v1";
+  const read=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{items:{},days:{}}}catch(e){return{items:{},days:{}}}};
+  const save=m=>{try{localStorage.setItem(KEY,JSON.stringify(m))}catch(e){}};
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+  const get=async f=>{const r=await fetch("data/"+f,{cache:"no-cache"});if(!r.ok)throw new Error(r.status);return r.json()};
+  const marksSubs=[];
+  const marksSnap=()=>{const m=read();return{exists:true,data:()=>m,metadata:{fromCache:false}}};
+  const db={
+    collection:()=>({onSnapshot:(next,err)=>{get("shelf.json").then(j=>next({docs:j.docs.map((d,i)=>({id:String(i),exists:true,data:()=>d})),metadata:{fromCache:false}})).catch(e=>err&&err(e));return()=>{}}}),
+    doc:(p)=>p==="meta/main"
+      ?{onSnapshot:(next,err)=>{get("meta.json").then(m=>next({exists:true,data:()=>m,metadata:{fromCache:false}})).catch(e=>err&&err(e));return()=>{}}}
+      :{onSnapshot:(next)=>{marksSubs.push(next);setTimeout(()=>next(marksSnap()),0);return()=>{}},
+        update:async(patch)=>{const m=read();if(patch.items)Object.assign(m.items,patch.items);if(patch.days)Object.assign(m.days=m.days||{},patch.days);save(m)},
+        set:async(d)=>save(d)}
+  };
+  window.claude={use:async(n)=>n==="db"?db:null};
+  if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+})();
+</script><title>Life Shelf</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#F6F5F2">
+<style>
+@font-face{font-family:"Allo";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/allo-Regular.woff2) format("woff2")}
+@font-face{font-family:"Allo";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/allo-Medium.woff2) format("woff2")}
+@font-face{font-family:"Allo";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/allo-SemiBold.woff2) format("woff2")}
+
+/* ─────────────────────────────────────────────────────────────
+   LIFE SHELF · design system
+   Direction: an index-card box you carry in your pocket.
+   Layout: one-column phone app, built for a 384×824 viewport (Galaxy S23 Ultra).
+   Reading on top, every action in the bottom third where the thumb is.
+   Grid: 4pt base, 8pt rhythm. Every size, gap and line box is a multiple of 4.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  color-scheme:light;
+
+  /* Color: neutral paper ramp, one ink accent, eight index-tab colors */
+  --bg:#F6F5F2;          /* page */
+  --card:#FFFFFF;        /* reading card, sheets */
+  --raised:#EEECE7;      /* pressed rows, inputs, active tab pill */
+  --line:rgba(26,25,22,.08);
+  --line-2:rgba(26,25,22,.14);
+  --ink:#1A1916;         /* primary text */
+  --ink-2:#55514A;       /* secondary text */
+  --ink-3:#6F6A62;       /* muted: meta and captions only */
+  --accent:#2747C8;      /* ink blue: primary action, progress, selection */
+  --accent-press:#1F39A3;
+  --on-accent:#FFFFFF;
+  --accent-soft:#E9EDFB;
+  --good:#2F7D4F;
+
+  --tab-attention:#C8641F;
+  --tab-action:#2F7D4F;
+  --tab-mind:#7B55BE;
+  --tab-body:#1E8A84;
+  --tab-people:#C2456C;
+  --tab-time:#9A7415;
+  --tab-money:#4F6684;
+  --tab-learning:#8E5B2E;
+
+  /* Type: Allo only. Sizes and line boxes (all line boxes on the 4pt grid) */
+  --font:"Allo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+
+  /* Space: 4pt scale */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px; --s10:40px; --s12:48px; --s16:64px;
+  --gutter:20px;
+
+  /* Size */
+  --tap:48px;            /* smallest touch target */
+  --btn:52px;            /* primary buttons in the thumb zone */
+  --tabbar:64px;
+  --actionbar:76px;      /* 52 button + 12 + 12 */
+  --col:480px;           /* the app column on wider screens */
+
+  /* Radius: nested (inner = outer − padding, never under 4) */
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:24px; --r-pill:999px;
+
+  /* Elevation: light theme, neutral and small */
+  --e-1:0 1px 2px rgba(26,25,22,.05);
+  --e-2:0 1px 2px rgba(26,25,22,.04),0 8px 24px rgba(26,25,22,.06);
+  --e-3:0 -1px 0 rgba(26,25,22,.06),0 -8px 24px rgba(26,25,22,.05);
+
+  /* Motion: one curve, five durations */
+  --ease:cubic-bezier(.22,1,.36,1);
+  --d-press:120ms;       /* press, toggles */
+  --d-quick:180ms;       /* icon fills, color changes */
+  --d-swap:240ms;        /* card swap, tab change */
+  --d-enter:320ms;       /* entrances */
+  --d-sheet:400ms;       /* reader sheet */
+  --stagger:40ms;
+  --rise:8px;
+}
+
+/* Type scale (Allo). Tracking tightens only at display size; small text opens up. */
+.t-display{font-size:32px;line-height:40px;font-weight:600;letter-spacing:-.02em}
+.t-title  {font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.01em}
+.t-head   {font-size:17px;line-height:24px;font-weight:500;letter-spacing:-.005em}
+.t-read   {font-size:19px;line-height:28px;font-weight:400;letter-spacing:.003em;word-spacing:.02em}
+.t-body   {font-size:16px;line-height:24px;font-weight:400;letter-spacing:0}
+.t-label  {font-size:15px;line-height:20px;font-weight:500;letter-spacing:.005em}
+.t-caption{font-size:13px;line-height:20px;font-weight:400;letter-spacing:.01em}
+.t-micro  {font-size:12px;line-height:16px;font-weight:500;letter-spacing:.02em}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--font);font-size:16px;line-height:24px;
+  font-feature-settings:"calt" 1,"liga" 1;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overscroll-behavior-y:none}
+h1,h2,h3,p{margin:0}
+h1,h2,h3{text-wrap:balance}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation}
+a{color:inherit}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+svg.i{width:24px;height:24px;flex:none;display:block}
+svg.i-sm{width:20px;height:20px}
+
+/* App column */
+.app{max-width:var(--col);margin:0 auto;min-height:100vh;
+  padding-left:max(var(--gutter),env(safe-area-inset-left,0px));padding-right:max(var(--gutter),env(safe-area-inset-right,0px));
+  padding-block:var(--s6) calc(var(--tabbar) + var(--s8) + env(safe-area-inset-bottom,0px))}
+.app.has-actions{padding-bottom:calc(var(--tabbar) + var(--actionbar) + var(--s8) + env(safe-area-inset-bottom,0px))}
+.view{display:grid;gap:var(--s6)}
+.view.enter > *{animation:rise var(--d-enter) var(--ease) both}
+.view.enter > *:nth-child(2){animation-delay:calc(var(--stagger)*1)}
+.view.enter > *:nth-child(3){animation-delay:calc(var(--stagger)*2)}
+.view.enter > *:nth-child(4){animation-delay:calc(var(--stagger)*3)}
+@keyframes rise{from{opacity:0;transform:translateY(var(--rise))}to{opacity:1;transform:none}}
+
+/* Screen header: One UI style, title low enough to read, nothing to tap up here */
+.hd{display:grid;gap:var(--s1);padding-top:var(--s8)}
+.hd .eyebrow{color:var(--ink-3)}
+.hd .sub{color:var(--ink-2)}
+
+/* Today progress: three segments */
+.progress{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin-top:var(--s3)}
+.progress span{height:4px;border-radius:2px;background:var(--line-2);overflow:hidden;position:relative}
+.progress span::after{content:"";position:absolute;inset:0;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform var(--d-enter) var(--ease)}
+.progress span.on::after{transform:scaleX(1)}
+.progress span.here{background:color-mix(in srgb,var(--accent) 24%,transparent)}
+
+/* The reading card: an index card with a colored divider tab (signature) */
+.card{position:relative;background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-2);
+  padding:var(--s6);padding-top:var(--s8);margin-top:var(--s5);display:grid;gap:var(--s4)}
+.card .tab{position:absolute;left:var(--s5);top:-20px;height:24px;padding:0 var(--s3);border-radius:var(--r-sm) var(--r-sm) 0 0;
+  background:color-mix(in srgb,var(--th) 14%,var(--card));color:color-mix(in srgb,var(--th) 78%,#000);
+  display:flex;align-items:center;gap:6px;box-shadow:inset 0 2px 0 var(--th)}
+.card .who{display:flex;align-items:center;gap:var(--s2);color:var(--ink-3);min-width:0}
+.card .who b{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.card .who .dot{width:3px;height:3px;border-radius:50%;background:var(--ink-3);flex:none}
+.card .who .rt{flex:none}
+.post{display:grid;gap:var(--s4);color:var(--ink);overflow-wrap:anywhere}
+.post p{white-space:pre-line}
+.post.clamp{max-height:calc(28px * 11);overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+.quote{border-radius:var(--r-md);background:var(--bg);padding:var(--s3) var(--s4);display:grid;gap:var(--s1);color:var(--ink-2);overflow-wrap:anywhere}
+.quote .qb{color:var(--ink-3)}
+.quote p{white-space:pre-line}
+.more{justify-self:start;height:var(--tap);margin:calc(var(--s3) * -1) 0;display:inline-flex;align-items:center;gap:var(--s1);color:var(--accent)}
+.card-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line);color:var(--ink-3)}
+.card-foot a{display:inline-flex;align-items:center;gap:var(--s1);height:var(--tap);margin:calc(var(--s3) * -1) 0;text-decoration:none;color:var(--ink-2)}
+.card-foot .state{display:inline-flex;align-items:center;gap:var(--s1)}
+.card.swap-out{animation:swapOut var(--d-swap) var(--ease) both}
+.card.swap-in{animation:swapIn var(--d-enter) var(--ease) both}
+.card.swap-back{animation:swapBack var(--d-enter) var(--ease) both}
+@keyframes swapOut{to{opacity:0;transform:translateX(-24px)}}
+@keyframes swapIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes swapBack{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+
+/* Action bar: lives in the thumb zone, above the tab bar */
+.actionbar{position:fixed;left:0;right:0;bottom:calc(var(--tabbar) + env(safe-area-inset-bottom,0px));z-index:20;
+  padding:var(--s3) max(var(--gutter),env(safe-area-inset-right,0px)) var(--s3) max(var(--gutter),env(safe-area-inset-left,0px));
+  background:linear-gradient(to top,var(--bg) 72%,color-mix(in srgb,var(--bg) 0%,transparent))}
+.sheet .actionbar{bottom:0;padding-bottom:calc(var(--s3) + env(safe-area-inset-bottom,0px))}
+.actionbar-in{max-width:calc(var(--col) - 2 * var(--gutter));margin:0 auto;display:flex;gap:var(--s2)}
+.btn{height:var(--btn);border-radius:var(--r-md);display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);padding:0 var(--s5);
+  transition:transform var(--d-press) var(--ease),background-color var(--d-quick) var(--ease),color var(--d-quick) var(--ease),box-shadow var(--d-quick) var(--ease)}
+.btn:active{transform:scale(.97)}
+.btn-primary{flex:1;background:var(--accent);color:var(--on-accent)}
+.btn-primary:active{background:var(--accent-press)}
+.btn-quiet{background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.btn-icon{width:var(--btn);padding:0;background:var(--card);color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--line-2)}
+.btn-icon[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}
+.btn-icon[aria-pressed="true"] svg path{fill:currentColor}
+.btn-tried[aria-pressed="true"]{background:color-mix(in srgb,var(--good) 12%,var(--card));color:var(--good);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--good) 30%,transparent)}
+.btn svg path,.btn svg{transition:fill var(--d-quick) var(--ease)}
+
+/* Bottom navigation */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--card) 92%,transparent);
+  -webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);box-shadow:var(--e-3);
+  padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.tabbar-in{max-width:var(--col);margin:0 auto;height:var(--tabbar);display:grid;grid-template-columns:repeat(4,1fr)}
+.tabbar button{display:grid;justify-items:center;align-content:center;gap:var(--s1);color:var(--ink-3);transition:color var(--d-quick) var(--ease)}
+.tabbar .pill{width:56px;height:32px;border-radius:16px;display:grid;place-items:center;transition:background-color var(--d-quick) var(--ease),transform var(--d-press) var(--ease)}
+.tabbar button:active .pill{transform:scale(.94)}
+.tabbar button[aria-current="page"]{color:var(--ink)}
+.tabbar button[aria-current="page"] .pill{background:var(--raised)}
+.tabbar .badge{position:absolute;margin:-14px 0 0 22px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--accent);color:var(--on-accent);font-size:11px;line-height:16px;font-weight:600;text-align:center}
+.tabbar .pill{position:relative}
+
+/* Lists (shelves, theme, kept) */
+.group{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-1);overflow:hidden}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--s3);width:100%;min-height:64px;padding:var(--s3) var(--s4);text-align:left;
+  transition:background-color var(--d-press) var(--ease)}
+.row + .row{box-shadow:inset 0 1px 0 var(--line)}
+.row:active{background:var(--raised)}
+.row .bar{width:4px;height:32px;border-radius:2px;background:var(--th)}
+.row .txt{display:grid;gap:2px;min-width:0}
+.row .txt .s{color:var(--ink-3)}
+.row .end{display:flex;align-items:center;gap:var(--s1);color:var(--ink-3)}
+.row .count{color:var(--ink-2);flex:none}
+.row .tline{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3)}
+.row .prev{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row.is-read .prev{color:var(--ink-2)}
+.row .lead{width:8px;height:8px;border-radius:50%;background:var(--th);align-self:start;margin-top:8px}
+
+/* Search */
+.search{position:relative}
+.search input{width:100%;height:var(--tap);border-radius:var(--r-md);border:0;background:var(--raised);padding:0 var(--s4) 0 44px;
+  font:400 16px/24px var(--font);color:var(--ink);appearance:none}
+.search input::placeholder{color:var(--ink-3)}
+.search input:focus-visible{outline:2px solid var(--accent);outline-offset:0}
+.search svg{position:absolute;left:var(--s3);top:12px;color:var(--ink-3)}
+
+/* Segmented control */
+.seg{display:grid;grid-template-columns:1fr 1fr;padding:var(--s1);gap:var(--s1);background:var(--raised);border-radius:var(--r-md)}
+.seg button{height:40px;border-radius:var(--r-sm);color:var(--ink-2);transition:background-color var(--d-quick) var(--ease),color var(--d-quick) var(--ease)}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:var(--e-1)}
+
+/* Back link in pushed screens */
+.back{display:inline-flex;align-items:center;gap:2px;height:var(--tap);margin-left:-12px;padding-right:var(--s3);color:var(--ink-2)}
+
+/* Try list */
+.try{display:grid;grid-template-columns:48px minmax(0,1fr);align-items:center;min-height:72px;padding:var(--s2) var(--s4) var(--s2) var(--s1)}
+.try + .try{box-shadow:inset 0 1px 0 var(--line)}
+.check{width:48px;height:48px;display:grid;place-items:center}
+.check span{width:24px;height:24px;border-radius:var(--r-sm);box-shadow:inset 0 0 0 1.5px var(--ink-3);display:grid;place-items:center;color:var(--on-accent);
+  transition:background-color var(--d-quick) var(--ease),box-shadow var(--d-quick) var(--ease)}
+.check span svg{width:16px;height:16px;opacity:0;transform:scale(.6);transition:opacity var(--d-quick) var(--ease),transform var(--d-quick) var(--ease)}
+.try.on .check span{background:var(--good);box-shadow:none}
+.try.on .check span svg{opacity:1;transform:none}
+.try .open{display:grid;gap:2px;text-align:left;padding:var(--s2) 0;min-width:0}
+.try .open .s{color:var(--ink-3)}
+.try.on .open .t-head{color:var(--ink-2)}
+.meter{height:8px;border-radius:4px;background:var(--line-2);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--good);border-radius:4px;transform-origin:left;transition:transform var(--d-enter) var(--ease)}
+
+/* Done state + week */
+.done{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-2);padding:var(--s8) var(--s6) var(--s6);display:grid;gap:var(--s6);margin-top:var(--s5)}
+.ticks{display:flex;gap:var(--s2)}
+.ticks span{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.done .copy{display:grid;gap:var(--s2)}
+.done .copy p{color:var(--ink-2)}
+.done .btns{display:grid;gap:var(--s2)}
+.week{display:grid;gap:var(--s3)}
+.week .days{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--s2)}
+.week .d{display:grid;justify-items:center;gap:var(--s1);color:var(--ink-3)}
+.week .d i{width:28px;height:28px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line-2);display:grid;place-items:center;color:var(--on-accent)}
+.week .d.on i{background:var(--accent);box-shadow:none}
+.week .d.today{color:var(--ink)}
+.week .d.today i{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.week .d.on.today i{box-shadow:none}
+
+/* Up next: a quiet peek at the queue, so the next step is never a surprise */
+.upnext{display:grid;gap:var(--s2);padding:0 var(--s1)}
+.un-row{display:grid;grid-template-columns:8px minmax(0,1fr);gap:var(--s3);align-items:center;color:var(--ink-3)}
+.un-row i{width:8px;height:8px;border-radius:50%;background:color-mix(in srgb,var(--th) 60%,var(--bg))}
+.un-row span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* Notes, empty states, footer meta */
+.note{color:var(--ink-3)}
+.empty{padding:var(--s8) var(--s6);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--e-1);display:grid;gap:var(--s2);text-align:left}
+.empty p{color:var(--ink-2)}
+.meta{color:var(--ink-3);display:grid;gap:var(--s1)}
+
+/* Reader sheet (opened from any list) */
+.sheet{position:fixed;inset:0;z-index:40;background:var(--bg);overflow-y:auto;overscroll-behavior:contain;
+  transform:translateY(100%);transition:transform var(--d-sheet) var(--ease);visibility:hidden}
+.sheet.open{transform:none;visibility:visible}
+.sheet-top{position:sticky;top:0;z-index:2;background:color-mix(in srgb,var(--bg) 92%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  padding-top:env(safe-area-inset-top,0px)}
+.sheet-top-in{max-width:var(--col);margin:0 auto;height:56px;display:grid;grid-template-columns:var(--tap) 1fr var(--tap);align-items:center;
+  padding:0 max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px))}
+.sheet-top .pos{text-align:center;color:var(--ink-2)}
+.iconbtn{width:var(--tap);height:var(--tap);border-radius:50%;display:grid;place-items:center;color:var(--ink-2);transition:background-color var(--d-press) var(--ease)}
+.iconbtn:active{background:var(--raised)}
+.sheet-body{max-width:var(--col);margin:0 auto;padding:var(--s4) max(var(--gutter),env(safe-area-inset-right,0px)) calc(var(--actionbar) + var(--s8) + env(safe-area-inset-bottom,0px)) max(var(--gutter),env(safe-area-inset-left,0px))}
+
+/* Toast with undo */
+.toast{position:fixed;left:50%;z-index:50;bottom:calc(var(--tabbar) + var(--actionbar) + var(--s2) + env(safe-area-inset-bottom,0px));
+  transform:translate(-50%,var(--s2));opacity:0;pointer-events:none;
+  min-height:var(--tap);max-width:calc(100% - 2 * var(--gutter));display:flex;align-items:center;gap:var(--s4);padding:0 var(--s2) 0 var(--s4);
+  border-radius:var(--r-md);background:var(--ink);color:var(--bg);box-shadow:var(--e-2);
+  transition:opacity var(--d-quick) var(--ease),transform var(--d-quick) var(--ease)}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast.high{bottom:calc(var(--actionbar) + var(--s2) + env(safe-area-inset-bottom,0px))}
+.toast button{height:40px;padding:0 var(--s3);border-radius:var(--r-sm);color:#B9C6FF}
+
+/* Rhythm overlay: open the page with #grid */
+.grid-on body::after{content:"";position:fixed;inset:0;z-index:99;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,rgba(39,71,200,.10) 0 1px,transparent 1px 8px)}
+
+@media (prefers-reduced-motion:reduce){
+  :root{--d-press:0ms;--d-quick:0ms;--d-swap:0ms;--d-enter:0ms;--d-sheet:0ms;--stagger:0ms;--rise:0px}
+  .view.enter > *,.card.swap-in,.card.swap-out,.card.swap-back{animation:none}
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-today" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.75"/><line x1="8" y1="3.25" x2="8" y2="2"/><line x1="11.36" y1="4.64" x2="12.24" y2="3.76"/><line x1="12.75" y1="8" x2="14" y2="8"/><line x1="11.36" y1="11.36" x2="12.24" y2="12.24"/><line x1="8" y1="12.75" x2="8" y2="14"/><line x1="4.64" y1="11.36" x2="3.76" y2="12.24"/><line x1="3.25" y1="8" x2="2" y2="8"/><line x1="4.64" y1="4.64" x2="3.76" y2="3.76"/></g></symbol>
+    <symbol id="i-shelves" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><line x1="2.75" y1="2.25" x2="2.75" y2="13.75"/><line x1="5.75" y1="2.25" x2="5.75" y2="13.75"/><path d="M8.769 3.276 L10.233 2.849 C10.657 2.725 11.1 2.968 11.225 3.392 L13.775 12.106 C13.899 12.531 13.656 12.975 13.231 13.099 L11.767 13.526 C11.343 13.65 10.9 13.407 10.775 12.983 L8.225 4.269 C8.101 3.844 8.344 3.4 8.769 3.276 Z"/></g></symbol>
+    <symbol id="i-try" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.25" width="3.5" height="3.5" rx="0.8"/><path d="M2 11.25 L3.5 12.75 L6 10"/><line x1="8.25" y1="3.25" x2="13.75" y2="3.25"/><line x1="8.25" y1="6.375" x2="11.75" y2="6.375"/><line x1="8.25" y1="9.625" x2="13.75" y2="9.625"/><line x1="8.25" y1="12.75" x2="11.75" y2="12.75"/></g></symbol>
+    <symbol id="i-keep" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M5.75 2.25 L10.25 2.25 C11.355 2.25 12.25 3.145 12.25 4.25 L12.25 13.75 L8 10.5 L3.75 13.75 L3.75 4.25 C3.75 3.145 4.645 2.25 5.75 2.25 Z"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M2.75 8.5 L6.25 12 L13.25 4.5" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-out" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><line x1="3.5" y1="12.5" x2="12.5" y2="3.5"/><path d="M6 3.5 L12.5 3.5 L12.5 10"/></g></symbol>
+    <symbol id="i-left" viewBox="0 0 16 16"><path d="M10.125 3.75 L5.875 8 L10.125 12.25" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-right" viewBox="0 0 16 16"><path d="M5.875 3.75 L10.125 8 L5.875 12.25" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 16 16"><path d="M3.75 5.875 L8 10.125 L12.25 5.875" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.75"/><line x1="10.375" y1="10.375" x2="13.75" y2="13.75"/></g></symbol>
+    <symbol id="i-close" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><line x1="3.75" y1="3.75" x2="12.25" y2="12.25"/><line x1="12.25" y1="3.75" x2="3.75" y2="12.25"/></g></symbol>
+  </defs>
+</svg>
+
+<div class="app" id="app">
+  <main class="view" id="view" aria-live="polite"></main>
+</div>
+
+<div class="actionbar" id="todayBar" hidden><div class="actionbar-in" id="todayBarIn"></div></div>
+
+<nav class="tabbar" aria-label="Sections">
+  <div class="tabbar-in" id="tabs"></div>
+</nav>
+
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Post" aria-hidden="true">
+  <div class="sheet-top"><div class="sheet-top-in">
+    <button class="iconbtn" id="sheetClose" aria-label="Close"><svg class="i"><use href="#i-close"/></svg></button>
+    <p class="pos t-caption num" id="sheetPos"></p>
+    <span></span>
+  </div></div>
+  <div class="sheet-body" id="sheetBody"></div>
+  <div class="actionbar" id="sheetBar"><div class="actionbar-in" id="sheetBarIn"></div></div>
+</section>
+
+<div class="toast t-label" id="toast" role="status"><span id="toastMsg"></span><button id="toastUndo" class="t-label">Undo</button></div>
+
+<script>
+/* ───────── data ───────── */
+const THEMES={
+  attention:{label:"Attention",note:"Phones, dopamine, boredom and focus"},
+  action:{label:"Doing the work",note:"Discipline, consistency, finishing things"},
+  mind:{label:"Mind & self",note:"Confidence, mood, ego and meaning"},
+  body:{label:"Body & sleep",note:"Training, sleep, energy and health"},
+  people:{label:"People & love",note:"Partners, friends, trust, forgiveness"},
+  time:{label:"Age & time",note:"Your 20s and 30s, seasons, regret"},
+  money:{label:"Money & ambition",note:"Wealth, risk and going big"},
+  learning:{label:"Learning & making",note:"Making over consuming, real learning"}
+};
+const FIRST_BATCH="2026-11-25";
+let posts=[],byId=new Map(),marks={},days={},meta={},loaded=false,dbState="wait";
+let db=null,writeChain=Promise.resolve();
+
+/* ───────── ui state ───────── */
+const ls={get(k,d){try{const v=localStorage.getItem("ls."+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem("ls."+k,JSON.stringify(v))}catch(e){}}};
+let tab=ls.get("tab","today");
+let route={name:"home"};            // inside Shelves: home | theme
+let shelfShowAll=false,query="";
+let todayIdx=0,extra=0,idxReady=false,marksLoaded=false;   // extra = "read one more"
+const expanded=new Set();
+let sheet=null;                     // {ids,idx}
+let lastView="";
+
+/* ───────── helpers ───────── */
+const $=id=>document.getElementById(id);
+function h(tag,attrs={},...kids){const el=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(v==null||v===false)continue;if(k==="class")el.className=v;else if(k==="style")el.setAttribute("style",v);else if(k.startsWith("on"))el.addEventListener(k.slice(2),v);else el.setAttribute(k,v===true?"":v)}for(const c of kids.flat()){if(c==null||c===false)continue;el.append(c.nodeType?c:document.createTextNode(String(c)))}return el}
+const NS="http://www.w3.org/2000/svg";
+function icon(id,cls="i"){const s=document.createElementNS(NS,"svg");s.setAttribute("class",cls);s.setAttribute("aria-hidden","true");const u=document.createElementNS(NS,"use");u.setAttribute("href","#i-"+id);s.append(u);return s}
+function keepIcon(on){const s=document.createElementNS(NS,"svg");s.setAttribute("class","i");s.setAttribute("viewBox","0 0 16 16");s.setAttribute("aria-hidden","true");
+  const p=document.createElementNS(NS,"path");p.setAttribute("d","M5.75 2.25 L10.25 2.25 C11.355 2.25 12.25 3.145 12.25 4.25 L12.25 13.75 L8 10.5 L3.75 13.75 L3.75 4.25 C3.75 3.145 4.645 2.25 5.75 2.25 Z");
+  p.setAttribute("fill",on?"currentColor":"none");p.setAttribute("stroke","currentColor");p.setAttribute("stroke-width","1");p.setAttribute("stroke-linejoin","round");s.append(p);return s}
+const mk=id=>(marks[id]&&marks[id].s)||null;
+const dayKey=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const startOfToday=()=>{const d=new Date();d.setHours(0,0,0,0);return d.getTime()};
+function hash(s){let x=2166136261;for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=Math.imul(x,16777619)}return x>>>0}
+const safeUrl=u=>typeof u==="string"&&u.startsWith("https://")?u:null;
+const th=p=>THEMES[p.th]||{label:p.th,note:""};
+function clean(t){return String(t||"").replace(/https:\/\/t\.co\/\w+/g,"").replace(/^(@\w+\s+)+/,"").replace(/[ \t]+\n/g,"\n").trim()}
+function hadLink(t){return /https:\/\/t\.co\/\w+/.test(String(t||""))}
+function readTime(p){const w=(clean(p.t)+" "+clean(p.q)).split(/\s+/).filter(Boolean).length;const s=Math.round(w/200*60);return s<45?(Math.max(10,Math.round(s/5)*5)+" sec read"):(Math.max(1,Math.round(s/60))+" min read")}
+function fmtDay(s){if(!s)return"";return new Date(s+"T12:00:00").toLocaleDateString(undefined,{day:"numeric",month:"short"})}
+function buzz(){try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}}
+
+/* ───────── marks (one doc, writes in sequence) ───────── */
+let toastTimer=null,undoFn=null;
+function toast(msg,undo,high){$("toastMsg").textContent=msg;undoFn=undo||null;$("toastUndo").hidden=!undo;
+  const t=$("toast");t.classList.toggle("high",!!high);t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),3200)}
+$("toastUndo").addEventListener("click",()=>{const f=undoFn;undoFn=null;$("toast").classList.remove("show");f&&f()});
+
+function write(patch){
+  if(!db)return;
+  const ref=db.doc("marks/main");
+  writeChain=writeChain.then(()=>ref.update(patch).catch(e=>{if(e&&e.code==="invalid_argument")return ref.set({items:Object.fromEntries(Object.entries(marks).filter(([,v])=>v)),days});throw e}))
+    .catch(()=>toast("Couldn't save. Check your connection"));
+}
+function setMark(id,s,{silent}={}){
+  const prev=marks[id]||null;
+  const next=s?{s,t:Date.now()}:null;
+  marks={...marks,[id]:next};
+  write({items:{[id]:next}});
+  render();
+  return prev;
+}
+function toggleMark(id,s,{high}={}){
+  const was=mk(id),prev=marks[id]||null,on=was!==s;
+  setMark(id,on?s:null);buzz();
+  const label={kept:on?"Kept":"Removed from Kept",tried:on?"Marked as tried":"Unmarked",read:on?"Marked read":"Unmarked"}[s];
+  toast(label,()=>{marks={...marks,[id]:prev};write({items:{[id]:prev}});render()},high);
+}
+function markDay(){const k=dayKey();if(days[k])return;days={...days,[k]:true};write({days:{[k]:true}})}
+
+/* ───────── today ───────── */
+function todaysPicks(){
+  const t0=startOfToday(),day=dayKey();
+  const pool=posts.filter(p=>{const m=marks[p.id];return !m||m.t>=t0});
+  pool.sort((a,b)=>((b.star?1:0)-(a.star?1:0))||(hash(a.id+day)-hash(b.id+day)));
+  const pick=[],seen=new Set();
+  for(const p of pool){if(pick.length===3+extra)break;if(pick.length<3&&seen.has(p.th))continue;pick.push(p);seen.add(p.th)}
+  for(const p of pool){if(pick.length===3+extra)break;if(!pick.includes(p))pick.push(p)}
+  return pick;
+}
+
+/* ───────── pieces ───────── */
+function header(eyebrow,title,sub){return h("header",{class:"hd"},eyebrow?h("p",{class:"eyebrow t-caption"},eyebrow):null,h("h1",{class:"t-display"},title),sub?h("p",{class:"sub t-body"},sub):null)}
+
+function postCard(p,{animate}={}){
+  const T=th(p),s=mk(p.id),text=clean(p.t),long=text.length>440,open=expanded.has(p.id);
+  const paras=text.split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
+  const card=h("article",{class:"card"+(animate?" "+animate:""),style:`--th:var(--tab-${p.th})`,"aria-label":"Post by "+(p.n||p.h)},
+    h("div",{class:"tab t-micro"},T.label),
+    h("div",{class:"who t-caption"},h("b",{},p.n||"@"+p.h),h("i",{class:"dot"}),h("span",{class:"rt num"},readTime(p))),
+    h("div",{class:"post t-read"+(long&&!open?" clamp":"")},paras.map(x=>h("p",{},x))),
+    p.q?h("div",{class:"quote t-body"},p.qb?h("span",{class:"qb t-caption"},"Quoting @"+p.qb):null,h("p",{},clean(p.q).slice(0,open?4000:280)+(!open&&clean(p.q).length>280?"…":""))):null,
+    long?h("button",{class:"more t-label",onclick:()=>{open?expanded.delete(p.id):expanded.add(p.id);render()},"aria-expanded":String(open)},open?"Show less":"Keep reading",icon(open?"left":"down","i i-sm")):null,
+    h("div",{class:"card-foot t-caption"},
+      h("span",{class:"state"},s==="kept"?["Kept"]:s==="tried"?["Tried"]:s==="read"?["Read"]:(p.m||hadLink(p.t))?"Has an image or link on X":p.b!==FIRST_BATCH?"New this week":""),
+      safeUrl(p.url)?h("a",{href:p.url,target:"_blank",rel:"noopener"},"Open on X",icon("out","i i-sm")):null));
+  return card;
+}
+
+function actionButtons(p,{onNext,nextLabel,high,onPrev}){
+  const s=mk(p.id),out=[];
+  if(onPrev)out.push(h("button",{class:"btn btn-icon","aria-label":"Previous",onclick:onPrev},icon("left")));
+  out.push(h("button",{class:"btn btn-icon","aria-pressed":String(s==="kept"),"aria-label":s==="kept"?"Kept. Tap to remove":"Keep",onclick:()=>toggleMark(p.id,"kept",{high})},keepIcon(s==="kept")));
+  if(p.pr)out.push(h("button",{class:"btn btn-icon btn-tried","aria-pressed":String(s==="tried"),"aria-label":s==="tried"?"Tried. Tap to undo":"I tried this",onclick:()=>toggleMark(p.id,"tried",{high})},icon("check")));
+  out.push(h("button",{class:"btn btn-primary t-label",onclick:onNext},nextLabel,icon("right","i i-sm")));
+  return out;
+}
+
+/* ───────── views ───────── */
+function viewToday(){
+  const picks=todaysPicks(),t0=startOfToday();
+  const isDone=p=>{const m=marks[p.id];return m&&m.t>=t0};
+  const doneN=picks.filter(isDone).length,total=picks.length;
+  const date=new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"});
+  if(!idxReady&&loaded&&marksLoaded){idxReady=true;const f=picks.slice(0,3).findIndex(p=>!isDone(p));todayIdx=f<0?picks.length:f}
+  if(todayIdx>total)todayIdx=total;
+  const allDone=total>0&&doneN>=Math.min(3,total)&&todayIdx>=total;
+  const left=picks.filter(p=>!isDone(p));
+  const mins=Math.max(1,Math.round(left.reduce((a,p)=>a+clean(p.t).split(/\s+/).length,0)/200));
+  const prog=h("div",{class:"progress",role:"progressbar","aria-valuemin":"0","aria-valuemax":String(Math.min(3,total)),"aria-valuenow":String(Math.min(doneN,3)),"aria-label":"Today's progress"},
+    [0,1,2].map(i=>h("span",{class:(picks[i]&&isDone(picks[i])?"on":"")+(i===todayIdx&&!allDone?" here":"")})));
+  const hd=h("header",{class:"hd"},h("p",{class:"eyebrow t-caption"},date),h("h1",{class:"t-display"},"Today"),
+    h("p",{class:"sub t-body num"},!loaded?"Loading your shelf":total===0?"Nothing left to read":allDone?"All three read":todayIdx>=3?"One more, since you asked":`${todayIdx+1} of ${Math.min(3,total)} · about ${mins} min left`),prog);
+  const kids=[hd];
+  if(!loaded){kids.push(emptyCard(dbState==="none"?"Sign in to load your shelf":"Loading",dbState==="none"?"Open this page while signed in to claude.ai.":"Your posts are on the way."))}
+  else if(!total){kids.push(emptyCard("You've read the whole shelf","New posts arrive with the next refresh."))}
+  else if(allDone){kids.push(doneCard(picks))}
+  else{const p=picks[todayIdx];kids.push(postCard(p,{animate:swapAnim}));
+    const next=picks.slice(todayIdx+1,Math.max(3,todayIdx+1)).slice(0,2);
+    if(next.length)kids.push(h("div",{class:"upnext"},h("p",{class:"t-caption note"},"Up next"),
+      next.map(n=>h("div",{class:"un-row",style:`--th:var(--tab-${n.th})`},h("i",{"aria-hidden":"true"}),h("span",{class:"t-body"},clean(n.t).split(/\n/)[0]||th(n).label)))))}
+  return kids;
+}
+let swapAnim="";
+function todayBar(){
+  const picks=todaysPicks(),p=picks[todayIdx];
+  if(tab!=="today"||!loaded||!p||sheet){$("todayBar").hidden=true;$("app").classList.remove("has-actions");return}
+  $("todayBar").hidden=false;$("app").classList.add("has-actions");
+  const last=todayIdx>=picks.length-1;
+  $("todayBarIn").replaceChildren(...actionButtons(p,{
+    onPrev:todayIdx>0?()=>{todayIdx--;swapAnim="swap-back";render()}:null,
+    nextLabel:last?"Done":"Done, next",
+    onNext:()=>{if(!mk(p.id))setMark(p.id,"read");buzz();
+      const t0=startOfToday(),doneAll=todaysPicks().slice(0,3).every(x=>{const m=marks[x.id];return m&&m.t>=t0});
+      if(doneAll)markDay();
+      todayIdx++;swapAnim="swap-in";render();window.scrollTo({top:0,behavior:"smooth"})}}));
+}
+function emptyCard(t,s){return h("div",{class:"empty"},h("h2",{class:"t-title"},t),h("p",{class:"t-body"},s))}
+function weekRow(){
+  const now=new Date(),dow=(now.getDay()+6)%7,mon=new Date(now);mon.setDate(now.getDate()-dow);
+  const L=["M","T","W","T","F","S","S"];
+  const n=[...Array(7)].filter((_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return days[dayKey(d)]}).length;
+  return h("div",{class:"week"},h("p",{class:"t-label"},"This week",h("span",{class:"note t-caption num"}," · "+n+(n===1?" day":" days")+" done")),
+    h("div",{class:"days"},L.map((l,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);const k=dayKey(d),on=!!days[k];
+      return h("div",{class:"d"+(on?" on":"")+(i===dow?" today":""),"aria-label":d.toLocaleDateString(undefined,{weekday:"long"})+(on?", done":"")},h("i",{},on?icon("check","i i-sm"):null),h("span",{class:"t-micro"},l))})));
+}
+function doneCard(picks){
+  const t0=startOfToday(),kept=picks.filter(p=>mk(p.id)==="kept"&&marks[p.id].t>=t0).length;
+  const morePossible=posts.some(p=>!marks[p.id]);
+  return h("div",{class:"done"},
+    h("div",{class:"ticks"},[0,1,2].map(()=>h("span",{},icon("check")))),
+    h("div",{class:"copy"},h("h2",{class:"t-title"},"That's today's three"),h("p",{class:"t-body"},kept?`You kept ${kept}. They're waiting in Kept when you want them again.`:"Come back tomorrow for three new ones. Or pick one thing to try today.")),
+    h("div",{class:"btns"},
+      h("button",{class:"btn btn-primary t-label",onclick:()=>go("try")},"Pick one thing to try",icon("right","i i-sm")),
+      morePossible?h("button",{class:"btn btn-quiet t-label",onclick:()=>{extra++;todayIdx=picks.length;swapAnim="swap-in";render()}},"Read one more"):null),
+    weekRow());
+}
+
+function postRow(p,list,{showTheme}={}){
+  const s=mk(p.id),T=th(p);
+  return h("button",{class:"row"+(s?" is-read":""),style:`--th:var(--tab-${p.th})`,onclick:()=>openSheet(list.map(x=>x.id),list.indexOf(p))},
+    h("i",{class:"lead","aria-hidden":"true"}),
+    h("span",{class:"txt"},h("span",{class:"prev t-body"},clean(p.t)||"(Image post)"),h("span",{class:"s t-caption"},(showTheme?T.label+" · ":"")+"@"+p.h+" · "+readTime(p))),
+    h("span",{class:"end"},s==="kept"?keepIcon(true):s?icon("check","i i-sm"):null));
+}
+
+function viewShelves(){
+  if(route.name==="theme")return viewTheme(route.th);
+  const unread=posts.filter(p=>!mk(p.id)).length;
+  const kids=[header(null,"Shelves",loaded?`${posts.length} posts · ${unread} unread`:"Loading")];
+  const inp=h("input",{id:"q",type:"search",placeholder:"Search posts and people",autocomplete:"off",enterkeyhint:"search","aria-label":"Search posts and people",value:query});
+  inp.addEventListener("input",e=>{query=e.target.value;clearTimeout(window.__qt);window.__qt=setTimeout(()=>{render();const el=$("q");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},150)});
+  kids.push(h("div",{class:"search"},icon("search"),inp));
+  const q=query.trim().toLowerCase();
+  if(q){
+    const res=posts.filter(p=>(p.t+" "+(p.q||"")+" "+p.h+" "+(p.n||"")+" "+th(p).label).toLowerCase().includes(q));
+    kids.push(res.length?h("div",{class:"group"},res.slice(0,60).map(p=>postRow(p,res,{showTheme:true}))):emptyCard("No matches","Try a shorter word, like sleep or phone."));
+  }else{
+    kids.push(h("div",{class:"group"},Object.entries(THEMES).map(([k,T])=>{
+      const all=posts.filter(p=>p.th===k),u=all.filter(p=>!mk(p.id)).length;
+      return h("button",{class:"row",style:`--th:var(--tab-${k})`,onclick:()=>{route={name:"theme",th:k};shelfShowAll=false;go("shelves",true)}},
+        h("i",{class:"bar","aria-hidden":"true"}),
+        h("span",{class:"txt"},h("span",{class:"tline"},h("span",{class:"t-head"},T.label),h("span",{class:"count t-caption num"},u?u+" unread":"All read")),h("span",{class:"s t-caption"},T.note)),
+        h("span",{class:"end"},icon("right","i i-sm")))})));
+    if(loaded)kids.push(h("div",{class:"meta t-caption"},
+      h("p",{},`Updated ${fmtDay(meta.last_run)}${meta.next_run?" · next refresh "+fmtDay(meta.next_run):""}`),
+      h("p",{class:"num"},`${posts.length} life posts from ${meta.total_bookmarks?meta.total_bookmarks.toLocaleString():"your"} bookmarks. Design posts are left out.`)));
+  }
+  return kids;
+}
+function viewTheme(k){
+  const T=THEMES[k]||{label:k,note:""};
+  const all=posts.filter(p=>p.th===k),unread=all.filter(p=>!mk(p.id));
+  const list=shelfShowAll?all:unread;
+  return [
+    h("div",{},h("button",{class:"back t-label",onclick:()=>{route={name:"home"};go("shelves",true)}},icon("left"),"Shelves"),
+      h("header",{class:"hd",style:"padding-top:8px"},h("h1",{class:"t-display"},T.label),h("p",{class:"sub t-body"},T.note))),
+    h("div",{class:"seg",role:"group","aria-label":"Show"},
+      h("button",{class:"t-label","aria-pressed":String(!shelfShowAll),onclick:()=>{shelfShowAll=false;render()}},`Unread ${unread.length}`),
+      h("button",{class:"t-label","aria-pressed":String(shelfShowAll),onclick:()=>{shelfShowAll=true;render()}},`All ${all.length}`)),
+    list.length?h("div",{class:"group",style:`--th:var(--tab-${k})`},list.map(p=>postRow(p,list))):emptyCard("All read here","Switch to All to read them again.")];
+}
+function viewTry(){
+  const pr=posts.filter(p=>p.pr),n=pr.filter(p=>mk(p.id)==="tried").length;
+  const kids=[header(null,"Try this",loaded?`${n} of ${pr.length} tried`:"Loading")];
+  if(loaded&&pr.length)kids.push(h("div",{class:"meter","aria-hidden":"true"},h("i",{style:`transform:scaleX(${pr.length?n/pr.length:0})`})));
+  kids.push(h("p",{class:"note t-body",style:"color:var(--ink-2)"},"Small things the posts tell you to do. Pick one, try it once, tick it off."));
+  if(pr.length)kids.push(h("div",{class:"group"},pr.map(p=>{const on=mk(p.id)==="tried";
+    return h("div",{class:"try"+(on?" on":"")},
+      h("button",{class:"check","aria-pressed":String(on),"aria-label":(on?"Tried: ":"Mark tried: ")+(p.pl||"practice"),onclick:()=>toggleMark(p.id,"tried")},h("span",{},icon("check"))),
+      h("button",{class:"open",onclick:()=>openSheet(pr.map(x=>x.id),pr.indexOf(p))},h("span",{class:"t-head"},p.pl||clean(p.t).slice(0,48)),h("span",{class:"s t-caption"},th(p).label+" · @"+p.h)))})));
+  return kids;
+}
+function viewKept(){
+  const list=posts.filter(p=>mk(p.id)==="kept").sort((a,b)=>marks[b.id].t-marks[a.id].t);
+  const kids=[header(null,"Kept",list.length?`${list.length} worth coming back to`:"Posts you want to keep close")];
+  kids.push(list.length?h("div",{class:"group"},list.map(p=>postRow(p,list,{showTheme:true}))):emptyCard("Nothing kept yet","Tap the bookmark under a post to keep it here."));
+  return kids;
+}
+
+/* ───────── reader sheet ───────── */
+function openSheet(ids,idx){sheet={ids,idx};const s=$("sheet");s.classList.add("open");s.setAttribute("aria-hidden","false");s.scrollTop=0;
+  try{history.pushState({sheet:1},"")}catch(e){}renderSheet("");document.body.style.overflow="hidden";$("todayBar").hidden=true}
+function closeSheet(fromPop){if(!sheet)return;sheet=null;const s=$("sheet");s.classList.remove("open");s.setAttribute("aria-hidden","true");document.body.style.overflow="";
+  if(!fromPop){try{history.back()}catch(e){}}render()}
+window.addEventListener("popstate",()=>{if(sheet)closeSheet(true)});
+$("sheetClose").addEventListener("click",()=>closeSheet());
+function renderSheet(anim){
+  if(!sheet)return;const p=byId.get(sheet.ids[sheet.idx]);if(!p){closeSheet();return}
+  $("sheetPos").textContent=`${sheet.idx+1} of ${sheet.ids.length}`;
+  $("sheetBody").replaceChildren(postCard(p,{animate:anim}));
+  const last=sheet.idx>=sheet.ids.length-1;
+  $("sheetBarIn").replaceChildren(...actionButtons(p,{high:true,
+    onPrev:sheet.idx>0?()=>{sheet.idx--;$("sheet").scrollTop=0;renderSheet("swap-back")}:null,
+    nextLabel:last?"Done":"Done, next",
+    onNext:()=>{if(!mk(p.id))setMark(p.id,"read");buzz();if(last){closeSheet();return}sheet.idx++;$("sheet").scrollTop=0;renderSheet("swap-in")}}));
+}
+
+/* Swipe between cards (Today and the sheet). Horizontal only, ignores vertical scroll. */
+function swipe(el,onLeft,onRight){let x0=0,y0=0,t0=0,on=false;
+  el.addEventListener("touchstart",e=>{const t=e.touches[0];x0=t.clientX;y0=t.clientY;t0=Date.now();on=true},{passive:true});
+  el.addEventListener("touchend",e=>{if(!on)return;on=false;const t=e.changedTouches[0],dx=t.clientX-x0,dy=t.clientY-y0;
+    if(Math.abs(dx)>64&&Math.abs(dx)>Math.abs(dy)*1.6&&Date.now()-t0<600){dx<0?onLeft():onRight()}},{passive:true})}
+swipe($("view"),()=>{if(tab==="today"&&!sheet){const b=$("todayBarIn").querySelector(".btn-primary");b&&b.click()}},()=>{if(tab==="today"&&todayIdx>0){todayIdx--;swapAnim="swap-back";render()}});
+swipe($("sheetBody"),()=>{const b=$("sheetBarIn").querySelector(".btn-primary");b&&b.click()},()=>{if(sheet&&sheet.idx>0){sheet.idx--;renderSheet("swap-back")}});
+
+/* ───────── tabs + render ───────── */
+const TABS=[["today","Today","today"],["shelves","Shelves","shelves"],["try","Try","try"],["kept","Kept","keep"]];
+function go(t,keepRoute){if(t!==tab&&!keepRoute)route={name:"home"};if(t==="shelves"&&tab==="shelves"&&!keepRoute)route={name:"home"};tab=t;ls.set("tab",t);lastView="";window.scrollTo(0,0);render()}
+function renderTabs(){
+  $("tabs").replaceChildren(...TABS.map(([k,l,ic])=>h("button",{"aria-current":tab===k?"page":null,onclick:()=>go(k)},
+    h("span",{class:"pill"},icon(ic)),h("span",{class:"t-micro"},l))));
+}
+function render(){
+  const key=tab+"|"+(route.name==="theme"?route.th:"")+"|"+loaded;
+  const v=$("view");
+  const kids=tab==="today"?viewToday():tab==="shelves"?viewShelves():tab==="try"?viewTry():viewKept();
+  v.classList.toggle("enter",key!==lastView);lastView=key;
+  v.replaceChildren(...kids);swapAnim="";
+  renderTabs();todayBar();
+  if(sheet)renderSheet("");
+  document.documentElement.classList.toggle("grid-on",location.hash==="#grid");
+}
+window.addEventListener("hashchange",render);
+
+/* ───────── boot ───────── */
+render();
+(async()=>{
+  db=window.claude&&window.claude.use?await window.claude.use("db"):null;
+  if(!db){dbState="none";render();return}
+  const timer=setTimeout(()=>{if(!loaded){dbState="slow";toast("Still loading. Check your connection")}},10000);
+  db.collection("shelf").onSnapshot(s=>{
+    posts=s.docs.flatMap(d=>(d.data().posts||[])).sort((a,b)=>(b.b||"").localeCompare(a.b||"")||(a.pos-b.pos));
+    byId=new Map(posts.map(p=>[p.id,p]));
+    if(!s.metadata.fromCache){loaded=true;clearTimeout(timer)}else if(posts.length)loaded=true;
+    render()},()=>{loaded=true;clearTimeout(timer);toast("Couldn't load the shelf. Reopen the page");render()});
+  db.doc("marks/main").onSnapshot(d=>{const x=d.exists?d.data():{};marks={...(x.items||{})};days={...(x.days||{})};marksLoaded=true;render()},()=>{marksLoaded=true;render()});
+  db.doc("meta/main").onSnapshot(d=>{meta=d.exists?d.data():{};render()},()=>{});
+})();
+</script>
+</body></html>
