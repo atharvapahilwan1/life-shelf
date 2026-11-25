@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><style>body{margin:0;padding-top:env(safe-area-inset-top,0px)}</style></head><body><script>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192-v2.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><style>body{margin:0;padding-top:env(safe-area-inset-top,0px)}</style></head><body><script>
 /* Local stand-in for claude.use("db"): posts from data/*.json, marks in this phone's storage. */
 (function(){
   const KEY="lifeshelf.marks.v1";
@@ -17,7 +17,10 @@
         set:async(d)=>save(d)}
   };
   window.claude={use:async(n)=>n==="db"?db:null};
-  if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+  // Updates: a new sw.js installs in the background; when it takes over, reload once so the new version shows.
+  if("serviceWorker" in navigator){const had=!!navigator.serviceWorker.controller;let done=false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{if(had&&!done){done=true;location.reload()}});
+    addEventListener("load",()=>navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{}))}
 })();
 </script><title>Life Shelf</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -143,12 +146,11 @@ svg.i-sm{width:20px;height:20px}
 .progress span.on::after{transform:scaleX(1)}
 .progress span.here{background:color-mix(in srgb,var(--accent) 24%,transparent)}
 
-/* The reading card: an index card with a colored divider tab (signature) */
-.card{position:relative;background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-2);
-  padding:var(--s6);padding-top:var(--s8);margin-top:var(--s5);display:grid;gap:var(--s4)}
-.card .tab{position:absolute;left:var(--s5);top:-20px;height:24px;padding:0 var(--s3);border-radius:var(--r-sm) var(--r-sm) 0 0;
-  background:color-mix(in srgb,var(--th) 14%,var(--card));color:color-mix(in srgb,var(--th) 78%,#000);
-  display:flex;align-items:center;gap:6px;box-shadow:inset 0 2px 0 var(--th)}
+/* The reading card: an index card with its shelf's color printed along the top edge (signature) */
+.card{position:relative;background:var(--card);border-radius:var(--r-lg);box-shadow:var(--e-2);overflow:clip;
+  padding:var(--s6);padding-top:calc(var(--s6) + 4px);display:grid;gap:var(--s4)}
+.card::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--th)}
+.card .who .thn{flex:none;color:color-mix(in srgb,var(--th) 82%,#000);font-weight:500}
 .card .who{display:flex;align-items:center;gap:var(--s2);color:var(--ink-3);min-width:0}
 .card .who b{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .card .who .dot{width:3px;height:3px;border-radius:50%;background:var(--ink-3);flex:none}
@@ -439,8 +441,7 @@ function postCard(p,{animate}={}){
   const T=th(p),s=mk(p.id),text=clean(p.t),long=text.length>440,open=expanded.has(p.id);
   const paras=text.split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
   const card=h("article",{class:"card"+(animate?" "+animate:""),style:`--th:var(--tab-${p.th})`,"aria-label":"Post by "+(p.n||p.h)},
-    h("div",{class:"tab t-micro"},T.label),
-    h("div",{class:"who t-caption"},h("b",{},p.n||"@"+p.h),h("i",{class:"dot"}),h("span",{class:"rt num"},readTime(p))),
+    h("div",{class:"who t-caption"},h("span",{class:"thn"},T.label),h("i",{class:"dot"}),h("b",{},p.n||"@"+p.h),h("i",{class:"dot"}),h("span",{class:"rt num"},readTime(p))),
     h("div",{class:"post t-read"+(long&&!open?" clamp":"")},paras.map(x=>h("p",{},x))),
     p.q?h("div",{class:"quote t-body"},p.qb?h("span",{class:"qb t-caption"},"Quoting @"+p.qb):null,h("p",{},clean(p.q).slice(0,open?4000:280)+(!open&&clean(p.q).length>280?"…":""))):null,
     long?h("button",{class:"more t-label",onclick:()=>{open?expanded.delete(p.id):expanded.add(p.id);render()},"aria-expanded":String(open)},open?"Show less":"Keep reading",icon(open?"left":"down","i i-sm")):null,
